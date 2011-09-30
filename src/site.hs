@@ -6,32 +6,28 @@ import Text.Blaze.Renderer.String (renderHtml)
 import Text.Blaze.Html5 ((!),toValue)
 import qualified Text.Blaze.Html5 as H
 import qualified Text.Blaze.Html5.Attributes as A
-import Data.Monoid (mempty, mconcat, mappend, mempty)
+import Data.Monoid (mempty, mconcat, mempty)
 import Data.List (elemIndex)
 import Data.Maybe (fromMaybe)
-import System.FilePath (combine, dropExtension)
-import Data.Typeable (Typeable)
--- seems odd this isn't in Data.FileStore
-instance Ord Revision where
-        compare x y
-         | revDateTime x == revDateTime y    =  EQ
-         | revDateTime x <= revDateTime y    =  LT
-         | otherwise                         =  GT
+import System.FilePath (combine, dropExtension, takeFileName)
+
+type Diff = [(DI, [String])]
 
 fileStore :: FileStore
-fileStore = gitFileStore "/home/irv/Projects/whistlepig"
+fileStore = gitFileStore "/home/irv/Projects/whistlepig/articles"
 
-getRevisionList :: Compiler (Identifier (Page String)) (FilePath, [(Revision, Revision)])
-getRevisionList = unsafeCompiler $ \page -> do
-    let path = toFilePath page
-    revs <- getRevisions path
-    return (path, cartProd revs)
-    -- cartProd [1..4] => [(1,2),(2,3),(3,4)]
-    where cartProd xs = [(y, x) | x <- xs, y <- xs, y == getListPrev x (reverse xs), x /= y]
+getRevisionList :: Compiler (String) (FilePath, [(Revision, Revision)])
+getRevisionList = unsafeCompiler $ \path -> do
+    revs <- getRevisions $ takeFileName path
+    return (path, makePairList revs)
+    -- makePairList [1..4] => [(1,2),(2,3),(3,4)]
+    where makePairList xs = [(y, x) | x <- xs, y <- xs, y == getListPrev x (reverse xs), x /= y]
 
-getDiff :: Compiler (FilePath, [(Revision, Revision)]) [(DI, [String])]
+getDiff :: Compiler (FilePath, [(Revision, Revision)]) Diff
 getDiff = unsafeCompiler $ \(page,rl) -> do
-    diffs <- mapM (getFileDiff page ) rl
+    putStrLn page
+    putStrLn $ show $ rl
+    diffs <- mapM (getFileDiff (takeFileName page) ) rl
     return $ concat diffs
 
 renderDiff :: (DI, [String]) -> String
@@ -44,7 +40,7 @@ renderDiff l = renderHtml $ H.pre ! A.class_ (attrCls (fst l)) $ diffCnt l
                            S -> "+"
                            B -> ""
 
-getFileDiff :: FilePath -> (Revision, Revision) -> IO [(DI, [String])]
+getFileDiff :: FilePath -> (Revision, Revision) -> IO Diff
 getFileDiff f a = diff fileStore f (Just $ revId $ fst a) (Just $ revId $ snd a)
 
 getRevisions :: FilePath -> IO [Revision]
@@ -54,23 +50,25 @@ getListPrev :: Eq a => a -> [a] -> a
 getListPrev i l = l !! checkBounds (fromMaybe 0 (i `elemIndex` l) +1 )
     where checkBounds x | x > length l -1 = length l-1 | otherwise = x
 
-constructDiff :: [(DI, [String])] -> Compiler () (Page String)
-constructDiff d = constA mempty
-    >>> arr (setField "title" "Diff")
+constructDiff :: String -> Diff -> Compiler () (Page String)
+constructDiff i d = constA (mempty)
+    >>> arr (setField "diff" (diff' d))
+    >>> arr (setField "title" ("Changes " ++ i))
     >>> applyTemplateCompiler "templates/diff.html"
-    >>> relativizeUrlsCompiler
+    >>> applyTemplateCompiler "templates/default.html"
+    where diff' l =  concatMap renderDiff l
 
 makeRevisionCompiler ::
         Compiler (Page String)
                 (Identifier (Page String), Compiler () (Page String))
 makeRevisionCompiler = proc page -> do
-        identifier <- getIdentifier -< ()
-        revisionList <- getRevisionList -< identifier
+        revisionList <- getRevisionList -< (getField "path" page)
         diff' <- getDiff -< revisionList
-        let gd = constructDiff diff'
+        let gd = constructDiff (getField "path" page) diff'
         returnA -< (diff_ident revisionList, gd)
-    where diff_ident (_, [(b,c)]) = parseIdentifier $ (show $ revId b) ++ "_" ++ (show $ revId c)
-          diff_ident (_, []) = parseIdentifier $ ""
+    where diff_ident i = parseIdentifier $ ("diffs/" ++   (revId ( fst $ head $ snd i))) ++ ("_" ++  (revId ( fst $ head $ snd i))) ++ ".markdown"
+--     where diff_ident (_, (b,c):_) =  parseIdentifier $ "diffs/" ++ (show $ revId b) ++ "_" ++ (show $ revId c)
+--           diff_ident (a, []) = parseIdentifier $ a
 
 routePage :: Routes
 routePage = customRoute fileToDirectory
@@ -96,25 +94,47 @@ addPostList = setFieldA "posts" $
         >>> arr mconcat
         >>> arr pageBody
 
+-- addRevisionList :: Compiler (Page String) (Page String)
+-- addRevisionList = unsafeCompiler $ \path -> do
+--     -- helpfully, returns empty list if filepath can't be found
+--     let rev = path >>> getRevisionList  
+--     --let rev' = applyRender rev
+--     return $ arr( setField "history" $ concatMap renderRevision rev)
+--     --where applyRender rev = concatMap renderRevision rev
+
+addRevisionList :: Compiler (Page String) (Page String)
+addRevisionList = proc page -> do
+    (_,rev) <- getRevisionList -< (getField "path" page)
+    let h = concatMap renderRevision rev
+    returnA -< ( setFieldA "history" h )
+
+renderRevision :: (Revision, Revision) -> String
+renderRevision rl = renderHtml $ H.tr $ do
+    H.td $ H.toHtml $ createLink rl
+    H.td $ H.toHtml $ revDescription $ fst rl
+    where diffLink (a,b) = "./diffs/" ++ revId a ++ "_" ++ revId b ++ ".html"
+          createLink (a,b) = H.a ! A.href (toValue $ diffLink (a,b)) $ H.toHtml (show (revDateTime a))
+
 main :: IO ()
 main = hakyll $ do
     -- Render articles
-    match "articles/*" $ do
+    _ <- ($) match "articles/*" $ do
         route   $ setExtension ".html"
         compile $ pageCompiler
             >>> arr (renderDateField "date" "%B %e, %Y" "Date unknown")
             >>> renderTagsField "prettytags" (fromCapture "tags/*")
+            >>> addRevisionList
             >>> applyTemplateCompiler "templates/post.html"
             >>> applyTemplateCompiler "templates/default.html"
             >>> relativizeUrlsCompiler
-    create "diffs" $ requireAll "articles/*" (\p t -> map (applyTemplate t) p)
-    match "diffs" $ route $ setExtension ".html" $
-        metaCompileWith "diffs"$ requireAll_ "articles/*"
+    group "diffs" $ match "articles/*" $
+        metaCompile $ requireAll_ "articles/*"
             >>> mapCompiler makeRevisionCompiler
-    match "templates/*" $ compile templateCompiler
+    match "diffs/*" $ route $ setExtension ".html" 
+    _ <- ($) match "templates/*" $ compile templateCompiler
     
         -- Tags
-    create "tags" $
+    _ <- ($) create "tags" $
         requireAll "articles/*" (\_ ps -> readTags ps :: Tags String)
 
     -- Add a tag list compiler for every tag
