@@ -1,0 +1,245 @@
+
+body {
+ background-color: #ffffff;
+ color:black;
+ width: 960px;
+    margin: 0 auto;
+}
+
+a {
+ color: #860111;
+ 
+}
+
+a:visited {
+  color: silver;  
+}
+
+h1 {
+ margin-right: 410px;   
+}
+
+h1,h2,h3,.history caption {
+    font-face:impact;
+    text-transform:uppercase;
+    color: silver;
+    background-color: #860111;
+    max-width: 80em;
+}
+
+h2 a, h3 a {
+    text-decoration : none;
+    font-face:impact;
+    text-transform:uppercase;
+    color: silver;
+    background-color: #860111;
+}
+
+h4 a {
+   text-decoration : none;
+   font-weight : normal;
+}
+
+nav {
+    display : block;
+    position:absolute;
+    top : 1em;
+    padding : 1em;
+    clear : left;
+    clear : right;
+    margin-bottom : 4em;
+}
+
+ul#navigation {
+    display:block;
+    list-style-type:none;
+}
+
+ul#navigation li {
+    padding:0;
+    margin:0;
+    display:inline;
+    padding-right:1.2em;
+}
+
+footer {
+    clear : left;
+    clear : right;
+    width : 100%;
+    background : #000000;
+    color : silver;
+    float:left;
+}
+
+#main {
+    margin-top : 4em;
+}
+.history {
+    
+}
+.history td {
+    padding : 1em;
+}
+
+.updates, .contact,.tagcloud {
+    width : 30em;
+    margin-right : 2em;
+    margin-left : 1em;
+    float : left;
+    clear : right;
+    border: 1px solid black;
+    min-height: 20em;
+    padding : 0.1em;
+}
+
+/*article {
+    max-width: 80em;
+    margin-right: 410px;
+}*/
+
+.history caption {
+ text-align: left;
+}
+
+/* Navigation */
+
+nav#TOC {
+    position: fixed;
+    margin-left: 750px;
+    top: 0;
+    padding-bottom: 20px;
+    height: 100%;
+    
+    text-shadow: none;
+    width: 240px;
+}
+
+nav#TOC > div li {
+    float: left;
+    margin-right: 1px;
+}
+
+nav#TOC > div li a, #top, #hide_menu {
+    padding: 7px 10px 9px 10px;
+    cursor: pointer;
+}
+
+nav#TOC > div li.active a {
+    border-top: 4px solid #0D2E4C;
+    padding-top: 3px;
+    color: #FFC76D;
+}
+
+#hide_menu {
+    display: none;
+}
+
+#top, #hide_menu {
+    float: right;
+}
+
+#nav_main > div {
+    overflow: hidden;
+    border-bottom: 1px solid #6E8294;
+}
+
+#nav_main > div ul {
+    float: left;
+}
+
+nav#TOC li {
+    font-size: 16px;
+    margin: 0px;
+    list-style: none;
+}
+
+nav#TOC > ul li:last-child a {
+    padding-bottom: 9px;
+}
+
+nav#TOC > ul > li {
+    border-bottom: 1px solid #6E8294;
+}
+
+/* Sprite map for sidebar icons */
+nav#TOC li h1 a {
+    font-size: 15px;
+    font-weight: bold;
+    padding: 7px 20px 10px 32px;
+    background-image: url('../image/sidebar-icon.png');
+    background-repeat: no-repeat;
+    background-position: 3px 3px;
+}
+
+nav#TOC li.nav_intro h1 a       { background-image: none; padding-left: 20px; }
+nav#TOC li.nav_object h1 a      { background-position: 5px 3px; }
+nav#TOC li.nav_function h1 a    { background-position: 5px -60px; }
+nav#TOC li.nav_array h1 a       { background-position: 5px -28px; }
+nav#TOC li.nav_types h1 a       { background-position: 5px -92px; }
+nav#TOC li.nav_core h1 a        { background-position: 5px -124px; }
+nav#TOC li.nav_other h1 a       { background-position: 5px -156px; }
+nav#TOC li.nav_appendix h1 a    { background-position: 5px -188px; }
+
+nav#TOC a {
+    color: white;
+    font-family: Arial, sans-serif;
+    font-size: 13px;
+    display: block;
+    padding: 4px 20px 6px;
+}
+
+/* Background color for nav elements to animate */
+
+#nav_main,
+nav#TOC a,
+nav#TOC ul,
+nav#TOC li {
+    background-color: #556c81;
+}
+
+nav#TOC a:hover,
+nav#TOC li.active,
+nav#TOC li.active a {
+    background-color: #344f68;
+}
+
+nav#TOC li.active a:hover,
+nav#TOC li a.active,
+nav#TOC li a.active:hover {
+    background-color: #0D2E4C;
+}
+
+nav#TOC a:hover, nav ul.active a:hover, nav a, nav li {
+    -moz-transition-property: background-color, color;
+    -moz-transition-duration: 0.3s;
+    
+    -webkit-transition-property: background-color, color;
+    -webkit-transition-duration: 0.3s;
+    
+    -o-transition-property: background-color, color;
+    -o-transition-duration: 0.3s;
+}
+
+#nav_mobile {
+    display: none;
+}
+
+section {
+    border-bottom: 4px dotted #8696a5;
+    font-size: 16px;
+    margin-right: 410px;
+    position: relative;
+}
+section section {
+    margin-right: 0px;
+    border-bottom:none;
+}
+
+
+section article,
+section header {
+    padding-bottom: 20px;
+    border-bottom: 1px solid #8696a5;
+}
+
+/* end Nav */

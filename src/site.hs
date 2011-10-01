@@ -1,6 +1,8 @@
 {-# LANGUAGE DeriveDataTypeable, Arrows, OverloadedStrings #-}
-import Control.Arrow (returnA, (>>>), arr, (***))
+import Control.Arrow (returnA, (>>>), arr, (***), (>>^))
 import Data.FileStore hiding (create)
+import Prelude hiding (id)
+import Control.Category (id)
 import Hakyll
 import Text.Blaze.Renderer.String (renderHtml)
 import Text.Blaze.Html5 ((!),toValue)
@@ -10,11 +12,11 @@ import Data.Monoid (mempty, mconcat, mempty, mappend)
 import Data.List (elemIndex)
 import Data.Maybe (fromMaybe)
 import System.FilePath (combine, dropExtension, takeFileName)
-
+import Text.Pandoc (bottomUp, defaultWriterOptions, Pandoc, WriterOptions(..))
 type Diff = [(DI, [String])]
 
 fileStore :: FileStore
-fileStore = gitFileStore "/home/irv/Projects/whistlepig/articles"
+fileStore = gitFileStore "articles"
 
 getRevisionList :: Compiler String (FilePath, [(Revision, Revision)])
 getRevisionList = unsafeCompiler $ \path -> do
@@ -28,7 +30,7 @@ getDiff = unsafeCompiler $ \(page,rl) -> do
     return $ concat diffs
 
 renderDiff :: (DI, [String]) -> String
-renderDiff l = renderHtml $ H.pre ! A.class_ (attrCls (fst l)) $ diffCnt l
+renderDiff l =  diffInd (fst l) ++ unlines (snd l) --renderHtml $ H.pre ! A.class_ (attrCls (fst l)) $ diffCnt l
     where attrCls c   = toValue $ diffStr "diff" c
           diffCnt l'   = H.toHtml $ diffInd (fst l') ++ unlines (snd l')
           diffStr a b = a ++ show b
@@ -77,23 +79,23 @@ routePage = customRoute fileToDirectory
 fileToDirectory :: Identifier a -> FilePath
 fileToDirectory = flip combine "index.html" . dropExtension . toFilePath
 
--- makeTagList :: String
---             -> [Page String]
---             -> Compiler () (Page String)
--- makeTagList tag posts =
---     constA (mempty, posts)
---         >>> addPostList
---         >>> arr (setField "title" ("Posts tagged &#8216;" ++ tag ++ "&#8217;"))
---         >>> applyTemplateCompiler "templates/posts.html"
---         >>> applyTemplateCompiler "templates/default.html"
---         >>> relativizeUrlsCompiler
+makeTagList :: String
+            -> [Page String]
+            -> Compiler () (Page String)
+makeTagList tag posts =
+    constA (mempty, posts)
+        >>> addPostList
+        >>> arr (setField "title" ("Posts tagged &#8216;" ++ tag ++ "&#8217;"))
+        >>> applyTemplateCompiler "templates/posts.html"
+        >>> applyTemplateCompiler "templates/default.html"
+        >>> relativizeUrlsCompiler
 
--- addPostList :: Compiler (Page String, [Page String]) (Page String)
--- addPostList = setFieldA "posts" $
---     arr (reverse . chronological)
---         >>> require "templates/postitem.html" (\p t -> map (applyTemplate t) p)
---         >>> arr mconcat
---         >>> arr pageBody
+addPostList :: Compiler (Page String, [Page String]) (Page String)
+addPostList = setFieldA "posts" $
+    arr (reverse . chronological)
+        >>> require "templates/postitem.html" (\p t -> map (applyTemplate t) p)
+        >>> arr mconcat
+        >>> arr pageBody
 
 addRevisionList :: Compiler (Page String) (Page String)
 addRevisionList = unsafeCompiler $ \page -> do
@@ -126,39 +128,53 @@ main = hakyll $ do
     -- Render articles
     _ <- ($) match "articles/*" $ do
         route   $ setExtension ".html"
-        compile $ pageCompiler
-            >>> arr (renderDateField "date" "%B %e, %Y" "Date unknown")
+        compile $ pageCompilerWith defaultHakyllParserState options
+            >>> renderModificationTime "modified" "%B %e, %Y"
+            -- >>> copyBodyFromField "date"
             >>> renderTagsField "prettytags" (fromCapture "tags/*")
             >>> addRevisionList
             >>> applyTemplateCompiler "templates/post.html"
             >>> applyTemplateCompiler "templates/default.html"
             >>> relativizeUrlsCompiler
-    group "diffs" $ match "articles/*" $
-        metaCompile $ requireAll_ "articles/*"
+    group "diffs" $ match "articles/*" $ do
+        metaCompileWith "diffs" $ requireAll_ "articles/*"
             >>> mapCompiler makeRevisionCompiler
-    match "diffs/*" $ route $ gsubRoute "diffs/" (const "articles/diffs/") `composeRoutes` setExtension "html"
+    match "diffs/*" $ do
+        route $( gsubRoute "diffs/" (const "articles/diffs/") `composeRoutes` setExtension "html")
     match "templates/*" $ compile templateCompiler
    -- Index
---     match "index.html" $ route idRoute
---     create "index.html" $ constA mempty
---         >>> arr (setField "title" "Home")
---         >>> requireA "tags" (setFieldA "tagcloud" renderTagCloud')
---         >>> requireAllA ("articles/*" `mappend` inGroup Nothing) (id *** arr (take 3 . reverse . chronological) >>> addPostList)
---         >>> applyTemplateCompiler "templates/index.html"
---         >>> applyTemplateCompiler "templates/default.html"
---         >>> relativizeUrlsCompiler
+    match "index.html" $ route idRoute
+    create "index.html" $ constA mempty
+        >>> arr (setField "title" "Home")
+        >>> requireA "tags" (setFieldA "tagcloud" renderTagCloud')
+        >>> requireAllA "articles/*" (id *** arr (take 3 . reverse . sortByBaseName) >>> addPostList)
+        >>> applyTemplateCompiler "templates/index.html"
+        >>> applyTemplateCompiler "templates/default.html"
+        >>> relativizeUrlsCompiler
         -- Tags
---     _ <- ($) create "tags" $
---         requireAll "articles/*" (\_ ps -> readTags ps :: Tags String)
--- 
---     -- Add a tag list compiler for every tag
---     match "tags/*" $ route $ setExtension ".html"
---     metaCompile $ require_ "tags"
---         >>> arr tagsMap
---         >>> arr (map (\(t, p) -> (tagIdentifier t, makeTagList t p)))
+    _ <- ($) create "tags" $
+        requireAll "articles/*" (\_ ps -> readTags ps :: Tags String)
+
+    -- Add a tag list compiler for every tag
+    match "tags/*" $ route $ setExtension ".html"
+    metaCompile $ require_ "tags"
+        >>> arr tagsMap
+        >>> arr (map (\(t, p) -> (tagIdentifier t, makeTagList t p)))
     where
         tagIdentifier :: String -> Identifier (Page String)
         tagIdentifier = fromCapture "tags/*"
         renderTagCloud' :: Compiler (Tags String) String
         renderTagCloud' = renderTagCloud tagIdentifier 100 120
 
+-- Pandoc options
+options :: WriterOptions
+options = defaultWriterOptions{ writerTableOfContents = True,
+                                    writerTemplate = "$if(toc)$\n$toc$\n$endif$\n$body$",
+                                    writerWrapText = True,
+                                    writerColumns = 80,
+                                    writerTabStop = 4,
+                                    writerStandalone = True,
+                                    writerSectionDivs = True,
+                                    writerHtml5 = True
+                                    
+}
