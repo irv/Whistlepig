@@ -9,10 +9,13 @@ import Text.Blaze.Html5 ((!),toValue)
 import qualified Text.Blaze.Html5 as H
 import qualified Text.Blaze.Html5.Attributes as A
 import Data.Monoid (mempty, mconcat, mempty, mappend)
-import Data.List (elemIndex)
+import Data.List (elemIndex, intercalate)
 import Data.Maybe (fromMaybe)
+import Data.Time.Clock (UTCTime)
+import Data.Time.Format (parseTime, formatTime)
+import System.Locale (TimeLocale, defaultTimeLocale)
 import System.FilePath (combine, dropExtension, takeFileName)
-import Text.Pandoc (bottomUp, defaultWriterOptions, Pandoc, WriterOptions(..), writeHtmlString, readMarkdown, defaultParserState)
+import Text.Pandoc (bottomUp, defaultWriterOptions, Pandoc, WriterOptions(..), writeHtmlString, readMarkdown, defaultParserState, Block(Para), Inline(Link))
 type Diff = [(DI, [String])]
 
 fileStore :: FileStore
@@ -29,17 +32,21 @@ getDiff = unsafeCompiler $ \(page,rl) -> do
     return $ head diffs
 
 renderDiff :: (DI, [String]) -> String
-renderDiff l =  diffInd (fst l) ++ unlines (snd l) --renderHtml $ H.pre ! A.class_ (attrCls (fst l)) $ diffCnt l
+renderDiff l =  diffInd (fst l) ++ unlines (snd l) ++ diffInd (fst l) ++ nl (fst l) --renderHtml $ H.pre ! A.class_ (attrCls (fst l)) $ diffCnt l
     where attrCls c   = toValue $ diffStr "diff" c
           diffCnt l'   = H.toHtml $ diffInd (fst l') ++ unlines (snd l')
           diffStr a b = a ++ show b
           diffInd i   = case i of
-                           F -> "-"
-                           S -> "+"
+                           F -> "~~" -- strikeout
+                           S -> "**" -- emphasis
                            B -> ""
+          nl i        = case i of
+                             F -> "\n"
+                             S -> "\n"
+                             otherwise -> ""
 
 getFileDiff :: FilePath -> (Revision, Revision) -> IO Diff
-getFileDiff f (a,b) = diff fileStore f (Just $ revId a) (Just $ revId b)
+getFileDiff f (a,b) = diff fileStore f (Just $ revId b) (Just $ revId a)
 
 getRevisions :: FilePath -> IO [(Revision, Revision)]
 getRevisions f = do
@@ -55,13 +62,18 @@ getListPrev i l = l !! checkBounds (fromMaybe 0 (i `elemIndex` l) +1 )
 constructDiff :: String -> Diff -> Compiler () (Page String)
 constructDiff i d = constA mempty
     >>> addDefaultFields >>> arr applySelf
+--     >>> pageCompiler (fromIdentifier $parseIdentifier i) >>> \res page -> do
+--         return page
     >>> arr (setField "diff" (writeHtmlString options $ readMarkdown defaultParserState $ diff' d))
-    -- >>> arr (setField "diff" (diff' d))
     >>> arr (setField "title" ("Changes " ++ i))
+    >>> renderTagsField "prettytags" (fromCapture "tags/*")
     >>> applyTemplateCompiler "templates/diff.html"
     >>> applyTemplateCompiler "templates/default.html"
     >>> relativizeUrlsCompiler
-    where diff' =   concatMap renderDiff
+    where diff' =  concatMap renderDiff
+
+applyDiffMarkup :: undefined
+applyDiffMarkup = undefined
 
 makeRevisionCompiler ::
         Compiler (Page String)
@@ -117,6 +129,10 @@ main = hakyll $ do
     match "files/*" $ do
         route idRoute
         compile copyFileCompiler
+    match "js/**" $ do
+        route idRoute
+        compile copyFileCompiler
+        -- apply unixFilter to compile coffeescript & minify js
     -- Compress CSS
     match "css/*" $ do
         route   idRoute
@@ -129,16 +145,17 @@ main = hakyll $ do
             >>> relativizeUrlsCompiler
     -- Render articles
     _ <- ($) match "articles/*" $ do
-        route   $ setExtension ".html"
+        route   routePage
         compile $ pageCompilerWith defaultHakyllParserState options
             >>> renderModificationTime "modified" "%B %e, %Y"
+            >>> arr(changeField "date" prettyPrintDate)
             -- >>> copyBodyFromField "date"
             >>> renderTagsField "prettytags" (fromCapture "tags/*")
             >>> addRevisionList
             >>> applyTemplateCompiler "templates/post.html"
             >>> applyTemplateCompiler "templates/default.html"
             >>> relativizeUrlsCompiler
-    group "diffs" $ match "articles/*" $ do
+    group "diffs" $ match "articles/*" $
         metaCompileWith "diffs" $ requireAll_ "articles/*"
             >>> mapCompiler makeRevisionCompiler
     match "diffs/*" $ route $( gsubRoute "diffs/" (const "articles/diffs/") `composeRoutes` setExtension "html")
@@ -147,6 +164,8 @@ main = hakyll $ do
     match "index.html" $ route idRoute
     create "index.html" $ constA mempty
         >>> arr (setField "title" "Andy Irving")
+        >>> arr (setField "description" "The personal website of Andy Irving")
+        >>> arr (setField "author" "Andy Irving")
         >>> requireA "tags" (setFieldA "tagcloud" renderTagCloud')
         >>> requireAllA "articles/*" (id *** arr (take 3 . reverse . sortByBaseName) >>> addPostList)
         >>> applyTemplateCompiler "templates/index.html"
@@ -172,10 +191,19 @@ options :: WriterOptions
 options = defaultWriterOptions{ writerTableOfContents = True,
                                     writerTemplate = "$if(toc)$\n$toc$\n$endif$\n$body$",
                                     writerWrapText = True,
-                                    writerColumns = 80,
+                                    writerColumns = 72,
                                     writerTabStop = 4,
                                     writerStandalone = True,
                                     writerSectionDivs = True,
-                                    writerHtml5 = True
+                                    writerHtml5 = True,
+                                    writerReferenceLinks = False
                                     
 }
+
+prettyPrintDate :: String -> String
+prettyPrintDate date = fromMaybe defaultValue $ do
+        let dateString = intercalate "-" $ take 3 $ splitAll "-" date
+        time <- parseTime defaultTimeLocale "%Y-%m-%d" dateString :: Maybe UTCTime
+        return $ formatTime defaultTimeLocale format time
+    where defaultValue = "Unknown"
+          format = "%B %e, %Y"

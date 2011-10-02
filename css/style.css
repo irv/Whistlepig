@@ -2,10 +2,16 @@
 body {
     background-color: #ffffff;
     color:black;
-    max-width: 60em;
+    max-width: 50em;
     margin: 0 auto;
+    font : 16.5px/1.5em "Georgia";
 }
 
+p + p {
+   text-indent:1em;
+   margin-top:0 }
+blockquote {
+   margin:1.5em }
 a {
  color: #860111;
  
@@ -15,18 +21,19 @@ a:visited {
   color: silver;  
 }
 
-h1 {
-/*  margin-right: 25em;    */
-    padding: 40px 0 30px;
-    margin: 0;
-    font-size: 75px;
-    line-height: 1.2em;
-    font-weight: normal;
-    text-shadow: 0 2px 2px #000;
-    font-family: Georgia, serif;
-
+h1, h2, h3, h4 {
+font-weight: normal;
 }
 
+h1 {
+    padding: 40px 0 30px;
+    margin: 0;
+    font-size: 218%;
+}
+
+header h1 {
+    padding: 0 0 0 0;
+}
 /*h2,h3,.history caption {
     font-face:impact;
     text-transform:uppercase;
@@ -34,32 +41,28 @@ h1 {
     background-color: #860111;
 }*/
 
-h2, h3, .history caption {
-    color: #000000;
-    font-family: Arial, sans-serif;
-    text-shadow: 0 1px 1px #fff;
-}
 
-h2 a, h3 a {
-    text-decoration : none;
-    color: #000000;
-    font-family: Arial, sans-serif;
-    text-shadow: 0 1px 1px #fff;
-/*    font-face:impact;
-    text-transform:uppercase;
-    color: silver;
-    background-color: #860111;*/
-}
-
-h4 a {
+h1 a, h2 a, h3 a, h4 a {
    text-decoration : none;
    font-weight : normal;
 }
 
-nav#main {
+h2 {
+ font-size : 164%;
+}
+
+h3 {
+   font-size : 145%;
+}
+
+h4 {
+    font-size : 118%;
+}
+
+#site {
     display : block;
     position:absolute;
-    top : -0em;
+    top : 0;
     padding : 1em;
     clear : left;
     clear : right;
@@ -70,14 +73,13 @@ header {
    margin-top : 4em;
 }
 
-ul#navigation {
+.navigation {
     display:block;
     list-style-type:none;
 }
 
-ul#navigation li {
+.navigation li {
     padding:0;
-    margin:0;
     display:inline;
     padding-right:1.2em;
 }
@@ -123,7 +125,7 @@ footer {
 
 /* Navigation */
 
-nav#TOC {
+#TOC {
     position: fixed;
     margin-left: 62em;
     top: 0;
@@ -134,17 +136,17 @@ nav#TOC {
     width: 15em;
 }
 
-nav#TOC > div li {
+#TOC > div li {
     float: left;
     margin-right: 1px;
 }
 
-nav#TOC > div li a, #top, #hide_menu {
+#TOC > div li a, #top, #hide_menu {
     padding: 7px 10px 9px 10px;
     cursor: pointer;
 }
 
-nav#TOC > div li.active a {
+#TOC > div li.active a {
     border-top: 4px solid #0D2E4C;
     padding-top: 3px;
     color: #FFC76D;
@@ -167,22 +169,22 @@ nav#TOC > div li.active a {
     float: left;
 }
 
-nav#TOC li {
+#TOC li {
     font-size: 16px;
     margin: 0px;
     list-style: none;
 }
 
-nav#TOC > ul li:last-child a {
+#TOC > ul li:last-child a {
     padding-bottom: 9px;
 }
 
-nav#TOC > ul > li {
+#TOC > ul > li {
     border-bottom: 1px solid #6E8294;
 }
 
 /* Sprite map for sidebar icons */
-nav#TOC li h1 a {
+#TOC li h1 a {
     font-size: 15px;
     font-weight: bold;
     padding: 7px 20px 10px 32px;
@@ -191,16 +193,16 @@ nav#TOC li h1 a {
     background-position: 3px 3px;
 }
 
-nav#TOC li.nav_intro h1 a       { background-image: none; padding-left: 20px; }
-nav#TOC li.nav_object h1 a      { background-position: 5px 3px; }
-nav#TOC li.nav_function h1 a    { background-position: 5px -60px; }
-nav#TOC li.nav_array h1 a       { background-position: 5px -28px; }
-nav#TOC li.nav_types h1 a       { background-position: 5px -92px; }
-nav#TOC li.nav_core h1 a        { background-position: 5px -124px; }
-nav#TOC li.nav_other h1 a       { background-position: 5px -156px; }
-nav#TOC li.nav_appendix h1 a    { background-position: 5px -188px; }
+#TOC li.nav_intro h1 a       { background-image: none; padding-left: 20px; }
+#TOC li.nav_object h1 a      { background-position: 5px 3px; }
+#TOC li.nav_function h1 a    { background-position: 5px -60px; }
+#TOC li.nav_array h1 a       { background-position: 5px -28px; }
+#TOC li.nav_types h1 a       { background-position: 5px -92px; }
+#TOC li.nav_core h1 a        { background-position: 5px -124px; }
+#TOC li.nav_other h1 a       { background-position: 5px -156px; }
+#TOC li.nav_appendix h1 a    { background-position: 5px -188px; }
 
-nav#TOC a {
+#TOC a {
     color: white;
     font-family: Arial, sans-serif;
     font-size: 13px;
@@ -210,26 +212,26 @@ nav#TOC a {
 
 /* Background color for nav elements to animate */
 
-#nav_main,
-nav#TOC a,
-nav#TOC ul,
-nav#TOC li {
+#site,
+#TOC a,
+#TOC ul,
+#TOC li {
     background-color: #556c81;
 }
 
-nav#TOC a:hover,
-nav#TOC li.active,
-nav#TOC li.active a {
+#TOC a:hover,
+#TOC li.active,
+#TOC li.active a {
     background-color: #344f68;
 }
 
-nav#TOC li.active a:hover,
-nav#TOC li a.active,
-nav#TOC li a.active:hover {
+#TOC li.active a:hover,
+#TOC li a.active,
+#TOC li a.active:hover {
     background-color: #0D2E4C;
 }
 
-nav#TOC a:hover, nav ul.active a:hover, nav a, nav li {
+#TOC a:hover, nav ul.active a:hover, nav a, nav li {
     -moz-transition-property: background-color, color;
     -moz-transition-duration: 0.3s;
     
