@@ -126,17 +126,17 @@ renderRevision rl = renderHtml $ H.tr $ do
 
 main :: IO ()
 main = hakyll $ do
-    match "files/*" $ do
+    let static = route idRoute >> compile copyFileCompiler
+    mapM_ (`match` static ) ["files/**", "js/lib/*", "images/**"]
+    match "js/*.js" $ do
         route idRoute
-        compile copyFileCompiler
-    match "js/**" $ do
-        route idRoute
-        compile copyFileCompiler
-        -- apply unixFilter to compile coffeescript & minify js
-    -- Compress CSS
+        compile $ getResourceString >>> unixFilter "yui-compressor" ["--type", "js"]
+    match "js/*.coffee" $ do
+        route $ setExtension "js"
+        compile $ getResourceString >>> unixFilter "coffee" ["--compile", "-s"] >>> unixFilter "yui-compressor" ["--type", "js"]
     match "css/*" $ do
         route   idRoute
-        compile compressCssCompiler
+        compile $ getResourceString >>> unixFilter "yui-compressor" ["--type", "css"]
 
     match "about/*" $ do
         route $ setExtension ".html"
