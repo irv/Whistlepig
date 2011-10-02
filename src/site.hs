@@ -12,7 +12,7 @@ import Data.Monoid (mempty, mconcat, mempty, mappend)
 import Data.List (elemIndex)
 import Data.Maybe (fromMaybe)
 import System.FilePath (combine, dropExtension, takeFileName)
-import Text.Pandoc (bottomUp, defaultWriterOptions, Pandoc, WriterOptions(..))
+import Text.Pandoc (bottomUp, defaultWriterOptions, Pandoc, WriterOptions(..), writeHtmlString, readMarkdown, defaultParserState)
 type Diff = [(DI, [String])]
 
 fileStore :: FileStore
@@ -21,12 +21,12 @@ fileStore = gitFileStore "articles"
 getRevisionList :: Compiler String (FilePath, [(Revision, Revision)])
 getRevisionList = unsafeCompiler $ \path -> do
     lst <- getRevisions $ takeFileName path
-    putStrLn $ show $ lst
     return (path, lst)
 
 getDiff :: Compiler (FilePath, [(Revision, Revision)]) Diff
 getDiff = unsafeCompiler $ \(page,rl) -> do
     diffs <- mapM (getFileDiff (takeFileName page) ) rl
+    putStrLn $ show diffs
     return $ concat diffs
 
 renderDiff :: (DI, [String]) -> String
@@ -40,7 +40,7 @@ renderDiff l =  diffInd (fst l) ++ unlines (snd l) --renderHtml $ H.pre ! A.clas
                            B -> ""
 
 getFileDiff :: FilePath -> (Revision, Revision) -> IO Diff
-getFileDiff f a = diff fileStore f (Just $ revId $ fst a) (Just $ revId $ snd a)
+getFileDiff f (a,b) = diff fileStore f (Just $ revId a) (Just $ revId b)
 
 getRevisions :: FilePath -> IO [(Revision, Revision)]
 getRevisions f = do
@@ -55,11 +55,14 @@ getListPrev i l = l !! checkBounds (fromMaybe 0 (i `elemIndex` l) +1 )
 
 constructDiff :: String -> Diff -> Compiler () (Page String)
 constructDiff i d = constA mempty
+    >>> addDefaultFields >>> arr applySelf
+    -- >>> arr (setField "diff" (writeHtmlString options $ readMarkdown defaultParserState $ diff' d))
     >>> arr (setField "diff" (diff' d))
     >>> arr (setField "title" ("Changes " ++ i))
     >>> applyTemplateCompiler "templates/diff.html"
     >>> applyTemplateCompiler "templates/default.html"
-    where diff' =  concatMap renderDiff
+    >>> relativizeUrlsCompiler
+    where diff' =   concatMap renderDiff
 
 makeRevisionCompiler ::
         Compiler (Page String)
@@ -139,13 +142,12 @@ main = hakyll $ do
     group "diffs" $ match "articles/*" $ do
         metaCompileWith "diffs" $ requireAll_ "articles/*"
             >>> mapCompiler makeRevisionCompiler
-    match "diffs/*" $ do
-        route $( gsubRoute "diffs/" (const "articles/diffs/") `composeRoutes` setExtension "html")
+    match "diffs/*" $ route $( gsubRoute "diffs/" (const "articles/diffs/") `composeRoutes` setExtension "markdown")
     match "templates/*" $ compile templateCompiler
    -- Index
     match "index.html" $ route idRoute
     create "index.html" $ constA mempty
-        >>> arr (setField "title" "Home")
+        >>> arr (setField "title" "Andy Irving")
         >>> requireA "tags" (setFieldA "tagcloud" renderTagCloud')
         >>> requireAllA "articles/*" (id *** arr (take 3 . reverse . sortByBaseName) >>> addPostList)
         >>> applyTemplateCompiler "templates/index.html"

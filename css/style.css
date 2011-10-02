@@ -1,8 +1,8 @@
 
 body {
- background-color: #ffffff;
- color:black;
- width: 960px;
+    background-color: #ffffff;
+    color:black;
+    max-width: 60em;
     margin: 0 auto;
 }
 
@@ -16,23 +16,39 @@ a:visited {
 }
 
 h1 {
- margin-right: 410px;   
+/*  margin-right: 25em;    */
+    padding: 40px 0 30px;
+    margin: 0;
+    font-size: 75px;
+    line-height: 1.2em;
+    font-weight: normal;
+    text-shadow: 0 2px 2px #000;
+    font-family: Georgia, serif;
+
 }
 
-h1,h2,h3,.history caption {
+/*h2,h3,.history caption {
     font-face:impact;
     text-transform:uppercase;
     color: silver;
     background-color: #860111;
-    max-width: 80em;
+}*/
+
+h2, h3, .history caption {
+    color: #000000;
+    font-family: Arial, sans-serif;
+    text-shadow: 0 1px 1px #fff;
 }
 
 h2 a, h3 a {
     text-decoration : none;
-    font-face:impact;
+    color: #000000;
+    font-family: Arial, sans-serif;
+    text-shadow: 0 1px 1px #fff;
+/*    font-face:impact;
     text-transform:uppercase;
     color: silver;
-    background-color: #860111;
+    background-color: #860111;*/
 }
 
 h4 a {
@@ -40,14 +56,18 @@ h4 a {
    font-weight : normal;
 }
 
-nav {
+nav#main {
     display : block;
     position:absolute;
-    top : 1em;
+    top : -0em;
     padding : 1em;
     clear : left;
     clear : right;
     margin-bottom : 4em;
+}
+
+header {
+   margin-top : 4em;
 }
 
 ul#navigation {
@@ -72,7 +92,7 @@ footer {
 }
 
 #main {
-    margin-top : 4em;
+    margin-top : 1em;
 }
 .history {
     
@@ -105,13 +125,13 @@ footer {
 
 nav#TOC {
     position: fixed;
-    margin-left: 750px;
+    margin-left: 62em;
     top: 0;
-    padding-bottom: 20px;
+    padding-bottom: 1.25em;
     height: 100%;
     
     text-shadow: none;
-    width: 240px;
+    width: 15em;
 }
 
 nav#TOC > div li {
@@ -220,14 +240,11 @@ nav#TOC a:hover, nav ul.active a:hover, nav a, nav li {
     -o-transition-duration: 0.3s;
 }
 
-#nav_mobile {
-    display: none;
-}
-
+/* end Nav */
 section {
     border-bottom: 4px dotted #8696a5;
     font-size: 16px;
-    margin-right: 410px;
+/*     margin-right: 25em; */
     position: relative;
 }
 section section {
@@ -238,8 +255,7 @@ section section {
 
 section article,
 section header {
-    padding-bottom: 20px;
+    padding-bottom: 1.25em;
     border-bottom: 1px solid #8696a5;
 }
 
-/* end Nav */
