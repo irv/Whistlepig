@@ -133,11 +133,17 @@ main = hakyll $ do
         compile $ getResourceString >>> unixFilter "yui-compressor" ["--type", "js"]
     match "js/*.coffee" $ do
         route $ setExtension "js"
-        compile $ getResourceString >>> unixFilter "coffee" ["--compile", "-s"] >>> unixFilter "yui-compressor" ["--type", "js"]
-    match "css/*" $ do
+        compile $ getResourceString
+            >>> unixFilter "coffee" ["--compile", "-s"]
+            >>> unixFilter "yui-compressor" ["--type", "js"]
+    match "css/*.css" $ do
         route   idRoute
         compile $ getResourceString >>> unixFilter "yui-compressor" ["--type", "css"]
-
+    match "css/*.sass" $ do
+        route   idRoute
+        compile $ getResourceString
+            >>> unixFilter "sass" ["-s", "--scss"]
+            >>> unixFilter "yui-compressor" ["--type", "css"]
     match "about/*" $ do
         route $ setExtension ".html"
         compile $ pageCompiler
