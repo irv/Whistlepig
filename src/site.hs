@@ -26,8 +26,7 @@ getRevisionList = unsafeCompiler $ \path -> do
 getDiff :: Compiler (FilePath, [(Revision, Revision)]) Diff
 getDiff = unsafeCompiler $ \(page,rl) -> do
     diffs <- mapM (getFileDiff (takeFileName page) ) rl
-    putStrLn $ show diffs
-    return $ concat diffs
+    return $ head diffs
 
 renderDiff :: (DI, [String]) -> String
 renderDiff l =  diffInd (fst l) ++ unlines (snd l) --renderHtml $ H.pre ! A.class_ (attrCls (fst l)) $ diffCnt l
@@ -56,8 +55,8 @@ getListPrev i l = l !! checkBounds (fromMaybe 0 (i `elemIndex` l) +1 )
 constructDiff :: String -> Diff -> Compiler () (Page String)
 constructDiff i d = constA mempty
     >>> addDefaultFields >>> arr applySelf
-    -- >>> arr (setField "diff" (writeHtmlString options $ readMarkdown defaultParserState $ diff' d))
-    >>> arr (setField "diff" (diff' d))
+    >>> arr (setField "diff" (writeHtmlString options $ readMarkdown defaultParserState $ diff' d))
+    -- >>> arr (setField "diff" (diff' d))
     >>> arr (setField "title" ("Changes " ++ i))
     >>> applyTemplateCompiler "templates/diff.html"
     >>> applyTemplateCompiler "templates/default.html"
@@ -142,7 +141,7 @@ main = hakyll $ do
     group "diffs" $ match "articles/*" $ do
         metaCompileWith "diffs" $ requireAll_ "articles/*"
             >>> mapCompiler makeRevisionCompiler
-    match "diffs/*" $ route $( gsubRoute "diffs/" (const "articles/diffs/") `composeRoutes` setExtension "markdown")
+    match "diffs/*" $ route $( gsubRoute "diffs/" (const "articles/diffs/") `composeRoutes` setExtension "html")
     match "templates/*" $ compile templateCompiler
    -- Index
     match "index.html" $ route idRoute
