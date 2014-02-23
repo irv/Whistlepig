@@ -57,27 +57,12 @@ getListPrev i l = l !! checkBounds (fromMaybe 0 (i `elemIndex` l) +1 )
     where checkBounds x | x > length l -1 = length l-1 | otherwise = x
 
 constructDiff :: String -> [[Diff [String]]] -> Compiler (Item String)
-
 constructDiff i d = makeItem i
     >>= loadAndApplyTemplate "templates/diff.html" (field "diff" (\_ -> diff' d) <> commonContext)
     >>= loadAndApplyTemplate "templates/default.html" commonContext
     >>= relativizeUrls
     where diff' [] =  return []
           diff' x = renderDiff $ head x
-
-makeRevisionCompiler :: Compiler (Item String)
-makeRevisionCompiler =  do
-        path <- toFilePath <$> getUnderlying
-        revisionList <- getRevisionList
-        diff' <- unsafeCompiler (getDiff path revisionList)
-        unsafeCompiler (putStrLn (takeFileName path))
-        constructDiff (takeFileName path) diff'
-        --createDiffItem [(fromFilePath (takeFileName path))] diff'
-        --let gd = constructDiff path diff'
---         makeItem (diff_ident revisionList, gd)
---     where diff_ident i = fromFilePath $ ("diffs/" ++ revId ( fst $ head $ snd i)) ++ ("_" ++ revId ( snd $ head $ snd i)) ++ ".markdown"
---           diff_ident (_, (b,c):_) =  fromFilePath $ "diffs/" ++ (show $ revId b) ++ "_" ++ (show $ revId c)
---           diff_ident (a, []) = fromFilePath $ a
 
 routePage :: Routes
 routePage = customRoute fileToDirectory
@@ -91,6 +76,7 @@ addRevisionList = do
     lst <- unsafeCompiler $ getRevisions $ takeFileName path
     return (concatMap renderRevision lst)
 
+-- used to create a link to the diff between two revisions
 renderRevision :: (Revision, Revision) -> String
 renderRevision rl = renderHtml $ H.tr $ do
     H.td $ H.toHtml $ createLink rl
@@ -158,8 +144,13 @@ main = hakyll $ do
             >>= relativizeUrls
     --diffs <- buildDiffsWith "articles/*" (fromCapture "diffs/*.html")
 
+    -- it's a right pain in the arse that you can't use the match function here. would be nice to do something like
+    -- match "articles" $ preprocess $ do ids <- getMatches
+    -- or something like that.
+    -- diffs ends up being Rules [Map Identifier [(Revision,Revision)]]
     diffs <- preprocess $ do
--- 	let ids = concat $ getMatches "articles/*"
+      -- this is a bit brittle. use Hakyll internal function to get the list of all files in here
+      -- which we know is where our git repo is
       ids <- getRecursiveContents (const $ return False) "articles"
       let ids' = map (fromFilePath) ids
       mapM buildDiffs ids'
