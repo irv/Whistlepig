@@ -1,33 +1,29 @@
 {-# LANGUAGE OverloadedStrings #-}
 import Data.FileStore hiding (create)
 import Prelude hiding (id)
-import Control.Category (id)
 import Hakyll
 import Text.Blaze.Html.Renderer.String (renderHtml)
 import Text.Blaze.Html5 ((!),toValue)
 import qualified Text.Blaze.Html5 as H
 import qualified Text.Blaze.Html5.Attributes as A
-import Data.Monoid (mempty, mconcat, mempty, mappend,(<>))
-import Data.List (elemIndex, intercalate)
+import Data.Monoid (mconcat, mappend,(<>))
+import Data.List (elemIndex)
 import Data.Maybe (fromMaybe)
 import System.FilePath (combine, dropExtension, takeFileName)
-import Text.Pandoc (bottomUp, def, Pandoc,  writeHtmlString, readMarkdown, Block(Para), Inline(Link))
-import Text.Pandoc.Options
 import qualified Data.Map as M
 import Control.Applicative ((<$>))
 import Data.Algorithm.DiffOutput
-import Data.Algorithm.Diff hiding(getDiff)
-import Control.Monad(foldM,forM_,liftM)
-import Control.Monad.Trans (liftIO)
+import Control.Monad(forM_)
+
 fileStore :: FileStore
 fileStore = gitFileStore "articles"
 
---getRevisionList :: Compiler [(Revision, Revision)]
+getRevisionList :: Compiler [(Revision, Revision)]
 getRevisionList = do
     path <- toFilePath <$> getUnderlying
     unsafeCompiler $ getRevisions $ takeFileName path
 
-
+getDiff :: FilePath -> [(Revision, Revision)] -> IO [[Diff [String]]]
 getDiff page =  mapM ( getFileDiff (takeFileName page) )
 
 --renderDiff :: [Diff, [String]] -> String
@@ -46,21 +42,22 @@ renderDiff d = return (ppDiff d)
 --                              Second -> "\n"
 --                              otherwise -> ""
 
---getFileDiff :: FilePath -> (Revision, Revision) -> IO [Diff, [String]]
+getFileDiff :: FilePath -> (Revision, Revision) -> IO [Diff [String]]
 getFileDiff f (a,b) = diff fileStore f (Just $ revId b) (Just $ revId a)
 
 getRevisions :: FilePath -> IO [(Revision, Revision)]
 getRevisions f = do
     revList <- history fileStore [f] (TimeRange Nothing Nothing) Nothing
     return $ makePairList revList
-    -- makePairList [1..4] => [(1,2),(2,3),(3,4)]
+    -- eg. makePairList [1..4] == [(1,2),(2,3),(3,4)]
     where makePairList xs = [(y, x) | x <- xs, y <- xs, y == getListPrev x (reverse xs), x /= y]
 
 getListPrev :: Eq a => a -> [a] -> a
 getListPrev i l = l !! checkBounds (fromMaybe 0 (i `elemIndex` l) +1 )
     where checkBounds x | x > length l -1 = length l-1 | otherwise = x
 
---constructDiff :: String -> [[Diff, [String]]] -> Compiler (Item String)
+constructDiff :: String -> [[Diff [String]]] -> Compiler (Item String)
+
 constructDiff i d = makeItem i
     >>= loadAndApplyTemplate "templates/diff.html" (field "diff" (\_ -> diff' d) <> commonContext)
     >>= loadAndApplyTemplate "templates/default.html" commonContext
@@ -68,12 +65,7 @@ constructDiff i d = makeItem i
     where diff' [] =  return []
           diff' x = renderDiff $ head x
 
-applyDiffMarkup :: undefined
-applyDiffMarkup = undefined
-
--- makeRevisionCompiler ::
---         Compiler (Page String)
---                 (Identifier (Page String), Compiler () (Page String))
+makeRevisionCompiler :: Compiler (Item String)
 makeRevisionCompiler =  do
         path <- toFilePath <$> getUnderlying
         revisionList <- getRevisionList
@@ -90,7 +82,7 @@ makeRevisionCompiler =  do
 routePage :: Routes
 routePage = customRoute fileToDirectory
 
---fileToDirectory :: Identifier a -> FilePath
+fileToDirectory :: Identifier -> FilePath
 fileToDirectory = flip combine "index.html" . dropExtension . toFilePath
 
 addRevisionList :: Compiler String
@@ -108,8 +100,6 @@ renderRevision rl = renderHtml $ H.tr $ do
 
 compressorCompiler :: String -> Item String -> Compiler (Item String)
 compressorCompiler t = withItemBody(unixFilter "yui-compressor" ["--type", t])
-
---makeDiffIdentifier a b = constRoute "diffs" `composeRoutes`
 
 main :: IO ()
 main = hakyll $ do
@@ -174,8 +164,8 @@ main = hakyll $ do
       let ids' = map (fromFilePath) ids
       mapM buildDiffs ids'
       
-    forM_ diffs $ \diff -> 
-      create (createDiffIdentifiers diff) $ do
+    forM_ diffs $ \d -> 
+      create (createDiffIdentifiers d) $ do
 	route idRoute
 	compile $ do
 	  path <- toFilePath <$> getUnderlying
@@ -200,7 +190,7 @@ main = hakyll $ do
                     <> commonContext)
                 >>= relativizeUrls
 
---buildDiffs :: Identifier -> IO (Identifier,[(Revision, Revision)])
+buildDiffs :: Identifier -> IO (M.Map Identifier [(Revision, Revision)])
 buildDiffs id' = do
   revs <- getRevisions $ toFilePath id'
   --return $ (id', revs)
@@ -213,19 +203,6 @@ createDiffIdentifiers diffs = map fromFilePath (fp diffs)
     f i (a,b) = i ++ "/" ++ revId a ++ "_" ++ revId b ++ ".html"
     fp = M.foldrWithKey (\k x ks-> ks ++  map (f ((combine "articles") $ dropExtension (toFilePath k))) x) []
   
--- Pandoc options
---options :: WriterOptions
-options = def{ writerTableOfContents = True,
-                                    writerTemplate = "$if(toc)$\n$toc$\n$endif$\n$body$",
-                                    writerWrapText = True,
-                                    writerColumns = 72,
-                                    writerTabStop = 4,
-                                    writerStandalone = True,
-                                    writerSectionDivs = True,
-                                    writerHtml5 = True,
-                                    writerReferenceLinks = False
-                                    
-}
 commonContext :: Context String
 commonContext = mconcat
     [ dateField "date" "%B %e, %Y"
@@ -237,6 +214,7 @@ commonContext = mconcat
         return $ fromMaybe "" metadata
     , defaultContext
     ]
+
 contentCtx :: Tags -> Context String
 contentCtx tags = mconcat
     [ tagsField "tags" tags
