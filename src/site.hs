@@ -63,19 +63,17 @@ tmpToFilePath (TmpFile f) = f
 diffCompiler :: String -> FilePath -> (String, String) -> TmpFile -> TmpFile -> Context String
 diffCompiler key f (a,b) fnA fnB = field key $ \_ ->
   unsafeCompiler $ do
-    putStrLn (f)
     verA <- retrieve fileStore f (Just a)
     verB <- retrieve fileStore f (Just b)
-    putStrLn (tmpToFilePath fnA)
     writeFile (tmpToFilePath fnA) verA
     writeFile (tmpToFilePath fnB) verB
-    
     -- unixFilter only accepts one input.
-    -- to be even more irritating,wdiff returns an exit code of 1 for changes
+    -- to be even more irritating,wdiff returns an exit code of 1 for changes, and the statistics go to stderr
     -- (ExitCode, String, String)
     (_,o,e) <- readProcessWithExitCode "dwdiff" ["--color","--statistics","--ignore-case","--ignore-formatting","--punctuation", "--match-context=3", "--algorithm=best", tmpToFilePath fnA, tmpToFilePath fnB] []
-    
-    readProcess "aha" ["-n"] (o ++ e)
+    (_,h,_) <- readProcessWithExitCode "aha" ["-n"] (o ++ e)
+    return h
+
 
 main :: IO ()
 main = hakyll $ do
@@ -146,21 +144,22 @@ main = hakyll $ do
 	route idRoute
 	compile $ do
 	  path <- toFilePath <$> getUnderlying
-	  --revisionList <- getRevisionList
-	  --diff' <- unsafeCompiler (getDiff path revisionList)
 	  -- hacky as fuck. at this point we're operating on the created identifer
 	  -- articles/articlename_reva_revb.html
 	  -- but we don't have access to that element of the map of diffs.
 	  -- do some nasty string splitting to get that data back
 	  let revs = splitOn "_" $ dropExtension $ takeFileName path
-	  let fp = (flip addExtension) "markdown" $  takeFileName $ takeDirectory path
+	  let fp = flip addExtension "markdown" $  takeFileName $ takeDirectory path
 	  fnA <- newTmpFile "reva"
 	  fnB <- newTmpFile "revb"
 	  let rs = ((head . tail) revs, head revs)
-	  let body = diffCompiler "diff" fp rs fnA fnB
-	  makeItem "" >>= loadAndApplyTemplate "templates/diff.html" (body <> commonContext)
-	  >>= loadAndApplyTemplate "templates/default.html" commonContext
-	  >>= relativizeUrls
+	  let body = diffCompiler "body" fp rs fnA fnB
+	  makeItem "" 
+	    >>= return . renderPandoc
+	    >>= loadAndApplyTemplate "templates/diff.html" (body <> commonContext)
+	    
+	    >>= loadAndApplyTemplate "templates/default.html" commonContext
+	    >>= relativizeUrls
 	  --constructDiff fp (head revs,head $ tail revs)
     
     match "templates/*" $ compile templateCompiler
