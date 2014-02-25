@@ -2,6 +2,7 @@
 import Data.FileStore hiding (create)
 import Prelude hiding (id)
 import Hakyll
+--import Hakyll.Core.File
 import Text.Blaze.Html.Renderer.String (renderHtml)
 import Text.Blaze.Html5 ((!),toValue)
 import qualified Text.Blaze.Html5 as H
@@ -9,41 +10,15 @@ import qualified Text.Blaze.Html5.Attributes as A
 import Data.Monoid (mconcat, mappend,(<>))
 import Data.List (elemIndex)
 import Data.Maybe (fromMaybe)
-import System.FilePath (combine, dropExtension, takeFileName)
+import System.FilePath (combine, dropExtension, takeFileName, takeDirectory, addExtension)
 import qualified Data.Map as M
 import Control.Applicative ((<$>))
-import Data.Algorithm.DiffOutput
 import Control.Monad(forM_)
+import System.Process(readProcess,readProcessWithExitCode)
+import Data.List.Split
 
 fileStore :: FileStore
 fileStore = gitFileStore "articles"
-
-getRevisionList :: Compiler [(Revision, Revision)]
-getRevisionList = do
-    path <- toFilePath <$> getUnderlying
-    unsafeCompiler $ getRevisions $ takeFileName path
-
-getDiff :: FilePath -> [(Revision, Revision)] -> IO [[Diff [String]]]
-getDiff page =  mapM ( getFileDiff (takeFileName page) )
-
---renderDiff :: [Diff, [String]] -> String
---renderDiff :: a -> String
-renderDiff d = return (ppDiff d)
--- renderDiff l =  diffInd (fst l) ++ unlines (snd l) ++ diffInd (fst l) ++ nl (fst l) --renderHtml $ H.pre ! A.class_ (attrCls (fst l)) $ diffCnt l
---     where attrCls c   = toValue $ diffStr "diff" c
---           diffCnt l'   = H.toHtml $ diffInd (fst l') ++ unlines (snd l')
---           diffStr a b = a ++ show b
---           diffInd i   = case i of
---                            First -> "~~" -- strikeout
---                            Second -> "**" -- emphasis
---                            Both -> ""
---           nl i        = case i of
---                              First -> "\n"
---                              Second -> "\n"
---                              otherwise -> ""
-
-getFileDiff :: FilePath -> (Revision, Revision) -> IO [Diff [String]]
-getFileDiff f (a,b) = diff fileStore f (Just $ revId b) (Just $ revId a)
 
 getRevisions :: FilePath -> IO [(Revision, Revision)]
 getRevisions f = do
@@ -55,14 +30,6 @@ getRevisions f = do
 getListPrev :: Eq a => a -> [a] -> a
 getListPrev i l = l !! checkBounds (fromMaybe 0 (i `elemIndex` l) +1 )
     where checkBounds x | x > length l -1 = length l-1 | otherwise = x
-
-constructDiff :: String -> [[Diff [String]]] -> Compiler (Item String)
-constructDiff i d = makeItem i
-    >>= loadAndApplyTemplate "templates/diff.html" (field "diff" (\_ -> diff' d) <> commonContext)
-    >>= loadAndApplyTemplate "templates/default.html" commonContext
-    >>= relativizeUrls
-    where diff' [] =  return []
-          diff' x = renderDiff $ head x
 
 routePage :: Routes
 routePage = customRoute fileToDirectory
@@ -86,6 +53,29 @@ renderRevision rl = renderHtml $ H.tr $ do
 
 compressorCompiler :: String -> Item String -> Compiler (Item String)
 compressorCompiler t = withItemBody(unixFilter "yui-compressor" ["--type", t])
+
+-- turn a TmpFile back into a FilePath
+tmpToFilePath :: TmpFile -> FilePath
+tmpToFilePath (TmpFile f) = f
+-- complicated. dwdiff will accept unified diff as input though.
+-- options taken from http://www.gwern.net/docs/2002-radiance#diff
+-- not perfect but then, not that bad either
+diffCompiler :: String -> FilePath -> (String, String) -> TmpFile -> TmpFile -> Context String
+diffCompiler key f (a,b) fnA fnB = field key $ \_ ->
+  unsafeCompiler $ do
+    putStrLn (f)
+    verA <- retrieve fileStore f (Just a)
+    verB <- retrieve fileStore f (Just b)
+    putStrLn (tmpToFilePath fnA)
+    writeFile (tmpToFilePath fnA) verA
+    writeFile (tmpToFilePath fnB) verB
+    
+    -- unixFilter only accepts one input.
+    -- to be even more irritating,wdiff returns an exit code of 1 for changes
+    -- (ExitCode, String, String)
+    (_,o,e) <- readProcessWithExitCode "dwdiff" ["--color","--statistics","--ignore-case","--ignore-formatting","--punctuation", "--match-context=3", "--algorithm=best", tmpToFilePath fnA, tmpToFilePath fnB] []
+    
+    readProcess "aha" ["-n"] (o ++ e)
 
 main :: IO ()
 main = hakyll $ do
@@ -121,7 +111,6 @@ main = hakyll $ do
     tags <- buildTags "articles/*" (fromCapture "tags/*.html")
     tagsRules tags $ \tag pattern -> do
         let title = "Posts tagged " ++ tag
-
         -- Copied from posts, need to refactor
         route idRoute
         compile $ do
@@ -134,15 +123,12 @@ main = hakyll $ do
                 >>= loadAndApplyTemplate "templates/default.html" commonContext
                 >>= relativizeUrls
     -- Render articles
-    _ <- ($) match "articles/*" $ version "raw" $ do
+    _ <- ($) match "articles/*" $ do
         route   routePage
         compile $ pandocCompiler
-            -- >>= saveSnapshot "content"
-            -- >>= addRevisionList
             >>= loadAndApplyTemplate "templates/post.html" (field "history" (const addRevisionList) <> contentCtx tags)
             >>= loadAndApplyTemplate "templates/default.html" commonContext
             >>= relativizeUrls
-    --diffs <- buildDiffsWith "articles/*" (fromCapture "diffs/*.html")
 
     -- it's a right pain in the arse that you can't use the match function here. would be nice to do something like
     -- match "articles" $ preprocess $ do ids <- getMatches
@@ -152,7 +138,7 @@ main = hakyll $ do
       -- this is a bit brittle. use Hakyll internal function to get the list of all files in here
       -- which we know is where our git repo is
       ids <- getRecursiveContents (const $ return False) "articles"
-      let ids' = map (fromFilePath) ids
+      let ids' = map fromFilePath ids
       mapM buildDiffs ids'
       
     forM_ diffs $ \d -> 
@@ -160,11 +146,22 @@ main = hakyll $ do
 	route idRoute
 	compile $ do
 	  path <- toFilePath <$> getUnderlying
-	  unsafeCompiler (putStrLn path)
-	  revisionList <- getRevisionList
-	  diff' <- unsafeCompiler (getDiff path revisionList)
-	  constructDiff (takeFileName path) diff'
-  
+	  --revisionList <- getRevisionList
+	  --diff' <- unsafeCompiler (getDiff path revisionList)
+	  -- hacky as fuck. at this point we're operating on the created identifer
+	  -- articles/articlename_reva_revb.html
+	  -- but we don't have access to that element of the map of diffs.
+	  -- do some nasty string splitting to get that data back
+	  let revs = splitOn "_" $ dropExtension $ takeFileName path
+	  let fp = (flip addExtension) "markdown" $  takeFileName $ takeDirectory path
+	  fnA <- newTmpFile "reva"
+	  fnB <- newTmpFile "revb"
+	  let rs = ((head . tail) revs, head revs)
+	  let body = diffCompiler "diff" fp rs fnA fnB
+	  makeItem "" >>= loadAndApplyTemplate "templates/diff.html" (body <> commonContext)
+	  >>= loadAndApplyTemplate "templates/default.html" commonContext
+	  >>= relativizeUrls
+	  --constructDiff fp (head revs,head $ tail revs)
     
     match "templates/*" $ compile templateCompiler
     
@@ -184,15 +181,13 @@ main = hakyll $ do
 buildDiffs :: Identifier -> IO (M.Map Identifier [(Revision, Revision)])
 buildDiffs id' = do
   revs <- getRevisions $ toFilePath id'
-  --return $ (id', revs)
-  let diffMap = M.fromList [(id',revs)]
-  return diffMap
+  return $ M.fromList [(id',revs)]
  
 createDiffIdentifiers :: M.Map Identifier [(Revision, Revision)] -> [Identifier]
 createDiffIdentifiers diffs = map fromFilePath (fp diffs) 
   where
     f i (a,b) = i ++ "/" ++ revId a ++ "_" ++ revId b ++ ".html"
-    fp = M.foldrWithKey (\k x ks-> ks ++  map (f ((combine "articles") $ dropExtension (toFilePath k))) x) []
+    fp = M.foldrWithKey (\k x ks-> ks ++  map (f (combine "articles" $ dropExtension (toFilePath k))) x) []
   
 commonContext :: Context String
 commonContext = mconcat
