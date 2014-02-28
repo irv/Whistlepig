@@ -13,7 +13,7 @@ import Data.Maybe (fromMaybe)
 import System.FilePath (combine, dropExtension, takeFileName, takeDirectory, addExtension)
 import qualified Data.Map as M
 import Control.Applicative ((<$>))
-import Control.Monad(forM_)
+import Control.Monad(forM_,liftM)
 import System.Process(readProcess,readProcessWithExitCode)
 import Data.List.Split
 
@@ -60,20 +60,19 @@ tmpToFilePath (TmpFile f) = f
 -- complicated. dwdiff will accept unified diff as input though.
 -- options taken from http://www.gwern.net/docs/2002-radiance#diff
 -- not perfect but then, not that bad either
-diffCompiler :: String -> FilePath -> (String, String) -> TmpFile -> TmpFile -> Context String
-diffCompiler key f (a,b) fnA fnB = field key $ \_ ->
-  unsafeCompiler $ do
-    verA <- retrieve fileStore f (Just a)
-    verB <- retrieve fileStore f (Just b)
-    writeFile (tmpToFilePath fnA) verA
-    writeFile (tmpToFilePath fnB) verB
-    -- unixFilter only accepts one input.
-    -- to be even more irritating,wdiff returns an exit code of 1 for changes, and the statistics go to stderr
-    -- (ExitCode, String, String)
-    (_,o,e) <- readProcessWithExitCode "dwdiff" ["--color","--statistics","--ignore-case","--ignore-formatting","--punctuation", "--match-context=3", "--algorithm=best", tmpToFilePath fnA, tmpToFilePath fnB] []
-    (_,h,_) <- readProcessWithExitCode "aha" ["-n"] (o ++ e)
-    return h
-
+diffCompiler :: FilePath -> (String, String) -> TmpFile -> TmpFile -> Compiler (Item String)
+diffCompiler f (a,b) fnA fnB = unsafeCompiler rundiff >>= makeItem
+  where rundiff = do
+		    verA <- retrieve fileStore f (Just a)
+		    verB <- retrieve fileStore f (Just b)
+		    writeFile (tmpToFilePath fnA) verA
+		    writeFile (tmpToFilePath fnB) verB
+		    -- unixFilter only accepts one input.
+		    -- to be even more irritating, wdiff returns an exit code of 1 for changes, and the statistics go to stderr
+		    -- (ExitCode, String, String)
+		    (_,o,e) <- readProcessWithExitCode "dwdiff" ["--color","--statistics","--ignore-case","--ignore-formatting","--punctuation", "--match-context=3", "--algorithm=best", tmpToFilePath fnA, tmpToFilePath fnB] []
+		    (_,h,_) <- readProcessWithExitCode "aha" ["-n"] (o ++ e)
+		    return h
 
 main :: IO ()
 main = hakyll $ do
@@ -141,7 +140,7 @@ main = hakyll $ do
       
     forM_ diffs $ \d -> 
       create (createDiffIdentifiers d) $ do
-	route idRoute
+	route $ setExtension ".html"
 	compile $ do
 	  path <- toFilePath <$> getUnderlying
 	  -- hacky as fuck. at this point we're operating on the created identifer
@@ -152,15 +151,16 @@ main = hakyll $ do
 	  let fp = flip addExtension "markdown" $  takeFileName $ takeDirectory path
 	  fnA <- newTmpFile "reva"
 	  fnB <- newTmpFile "revb"
-	  let rs = ((head . tail) revs, head revs)
-	  let body = diffCompiler "body" fp rs fnA fnB
-	  makeItem "" 
-	    >>= return . renderPandoc
-	    >>= loadAndApplyTemplate "templates/diff.html" (body <> commonContext)
-	    
-	    >>= loadAndApplyTemplate "templates/default.html" commonContext
+	  let rs = ((head . tail) revs, head revs)  
+	  diffCompiler fp rs fnA fnB
+	    >>= applyAsTemplate (contentCtx tags)
+	    >>= (return . renderPandoc) 
+	    >>= loadAndApplyTemplate (fromFilePath "templates/default.html") (
+                    constField "author" "Andy Irving"
+                    <> constField "title" "Andy Irving"
+                    <> constField "description" "The personal website of Andy Irving"
+                    <> commonContext) 
 	    >>= relativizeUrls
-	  --constructDiff fp (head revs,head $ tail revs)
     
     match "templates/*" $ compile templateCompiler
     
@@ -185,7 +185,7 @@ buildDiffs id' = do
 createDiffIdentifiers :: M.Map Identifier [(Revision, Revision)] -> [Identifier]
 createDiffIdentifiers diffs = map fromFilePath (fp diffs) 
   where
-    f i (a,b) = i ++ "/" ++ revId a ++ "_" ++ revId b ++ ".html"
+    f i (a,b) = i ++ "/" ++ revId a ++ "_" ++ revId b ++ ".markdown"
     fp = M.foldrWithKey (\k x ks-> ks ++  map (f (combine "articles" $ dropExtension (toFilePath k))) x) []
   
 commonContext :: Context String
