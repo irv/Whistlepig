@@ -2,19 +2,18 @@
 import Data.FileStore hiding (create)
 import Prelude hiding (id)
 import Hakyll
---import Hakyll.Core.File
 import Text.Blaze.Html.Renderer.String (renderHtml)
 import Text.Blaze.Html5 ((!),toValue)
 import qualified Text.Blaze.Html5 as H
 import qualified Text.Blaze.Html5.Attributes as A
 import Data.Monoid (mconcat, mappend,(<>))
 import Data.List (elemIndex)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, catMaybes)
 import System.FilePath (combine, dropExtension, takeFileName, takeDirectory, addExtension)
 import qualified Data.Map as M
 import Control.Applicative ((<$>))
-import Control.Monad(forM_,liftM)
-import System.Process(readProcess,readProcessWithExitCode)
+import Control.Monad(forM_, liftM)
+import System.Process(readProcessWithExitCode)
 import Data.List.Split
 
 fileStore :: FileStore
@@ -37,11 +36,14 @@ routePage = customRoute fileToDirectory
 fileToDirectory :: Identifier -> FilePath
 fileToDirectory = flip combine "index.html" . dropExtension . toFilePath
 
-addRevisionList :: Compiler String
-addRevisionList = do
-    path <- toFilePath <$> getUnderlying
-    lst <- unsafeCompiler $ getRevisions $ takeFileName path
-    return (concatMap renderRevision lst)
+-- although it's a list of Maps, there's really only one identifier that's going to match
+addRevisionList :: [M.Map Identifier [(Revision, Revision)]] -> Compiler String
+addRevisionList d =  do
+  i <- getUnderlying
+  return (r (lst i))
+  where lst i = concat $ catMaybes $ map (M.lookup (f i)) d
+	f k = fromFilePath (takeFileName (toFilePath k))
+	r = concatMap renderRevision
 
 -- used to create a link to the diff between two revisions
 renderRevision :: (Revision, Revision) -> String
@@ -57,6 +59,7 @@ compressorCompiler t = withItemBody(unixFilter "yui-compressor" ["--type", t])
 -- turn a TmpFile back into a FilePath
 tmpToFilePath :: TmpFile -> FilePath
 tmpToFilePath (TmpFile f) = f
+
 -- complicated. dwdiff will accept unified diff as input though.
 -- options taken from http://www.gwern.net/docs/2002-radiance#diff
 -- not perfect but then, not that bad either
@@ -119,13 +122,7 @@ main = hakyll $ do
                             commonContext)
                 >>= loadAndApplyTemplate "templates/default.html" commonContext
                 >>= relativizeUrls
-    -- Render articles
-    _ <- ($) match "articles/*" $ do
-        route   routePage
-        compile $ pandocCompiler
-            >>= loadAndApplyTemplate "templates/post.html" (field "history" (const addRevisionList) <> contentCtx tags)
-            >>= loadAndApplyTemplate "templates/default.html" commonContext
-            >>= relativizeUrls
+
 
     -- it's a right pain in the arse that you can't use the match function here. would be nice to do something like
     -- match "articles" $ preprocess $ do ids <- getMatches
@@ -137,7 +134,15 @@ main = hakyll $ do
       ids <- getRecursiveContents (const $ return False) "articles"
       let ids' = map fromFilePath ids
       mapM buildDiffs ids'
-      
+
+    -- Render articles
+    _ <- ($) match "articles/*" $ do
+        route routePage
+        compile $ pandocCompiler
+            >>= loadAndApplyTemplate "templates/post.html" (field "history" (const (addRevisionList diffs)) <> contentCtx tags)
+            >>= loadAndApplyTemplate "templates/default.html" commonContext
+	    >>= relativizeUrls
+
     forM_ diffs $ \d -> 
       create (createDiffIdentifiers d) $ do
 	route $ setExtension ".html"
@@ -151,10 +156,8 @@ main = hakyll $ do
 	  let fp = flip addExtension "markdown" $  takeFileName $ takeDirectory path
 	  fnA <- newTmpFile "reva"
 	  fnB <- newTmpFile "revb"
-	  let rs = ((head . tail) revs, head revs)  
-	  diffCompiler fp rs fnA fnB
-	    >>= applyAsTemplate (contentCtx tags)
-	    >>= (return . renderPandoc) 
+	  let rs = ((head . tail) revs, head revs)
+	  liftM renderPandoc (diffCompiler fp rs fnA fnB >>= applyAsTemplate (contentCtx tags))
 	    >>= loadAndApplyTemplate (fromFilePath "templates/default.html") (
                     constField "author" "Andy Irving"
                     <> constField "title" "Andy Irving"
