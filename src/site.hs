@@ -8,11 +8,11 @@ import qualified Text.Blaze.Html5 as H
 import qualified Text.Blaze.Html5.Attributes as A
 import Data.Monoid (mconcat, mappend,(<>))
 import Data.List (elemIndex)
-import Data.Maybe (fromMaybe, catMaybes)
+import Data.Maybe (fromMaybe)
 import System.FilePath (combine, dropExtension, takeFileName, takeDirectory, addExtension)
 import qualified Data.Map as M
 import Control.Applicative ((<$>))
-import Control.Monad(forM_, liftM)
+import Control.Monad(liftM)
 import System.Process(readProcessWithExitCode)
 import Data.List.Split
 
@@ -37,13 +37,14 @@ fileToDirectory :: Identifier -> FilePath
 fileToDirectory = flip combine "index.html" . dropExtension . toFilePath
 
 -- although it's a list of Maps, there's really only one identifier that's going to match
-addRevisionList :: [M.Map Identifier [(Revision, Revision)]] -> Compiler String
+addRevisionList :: M.Map Identifier [(Revision, Revision)] -> Compiler String
 addRevisionList d =  do
   i <- getUnderlying
   return (r (lst i))
-  where lst i = concat $ catMaybes $ map (M.lookup (f i)) d
+  where lst i = M.lookup (f i) d
 	f k = fromFilePath (takeFileName (toFilePath k))
-	r = concatMap renderRevision
+	r Nothing = []
+	r (Just a) = concatMap renderRevision a
 
 -- used to create a link to the diff between two revisions
 renderRevision :: (Revision, Revision) -> String
@@ -127,13 +128,13 @@ main = hakyll $ do
     -- it's a right pain in the arse that you can't use the match function here. would be nice to do something like
     -- match "articles" $ preprocess $ do ids <- getMatches
     -- or something like that.
-    -- diffs ends up being Rules [Map Identifier [(Revision,Revision)]]
+    -- diffs ends up being Rules Map Identifier [(Revision,Revision)]
     diffs <- preprocess $ do
       -- this is a bit brittle. use Hakyll internal function to get the list of all files in here
       -- which we know is where our git repo is
       ids <- getRecursiveContents (const $ return False) "articles"
       let ids' = map fromFilePath ids
-      mapM buildDiffs ids'
+      liftM M.unions (mapM buildDiffs ids')
 
     -- Render articles
     _ <- ($) match "articles/*" $ do
@@ -143,8 +144,7 @@ main = hakyll $ do
             >>= loadAndApplyTemplate "templates/default.html" commonContext
 	    >>= relativizeUrls
 
-    forM_ diffs $ \d -> 
-      create (createDiffIdentifiers d) $ do
+    _ <-  create (createDiffIdentifiers diffs) $ do
 	route $ setExtension ".html"
 	compile $ do
 	  path <- toFilePath <$> getUnderlying
